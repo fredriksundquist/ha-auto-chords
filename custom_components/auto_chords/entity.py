@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from homeassistant.core import callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity import Entity
@@ -14,6 +15,7 @@ class AutoChordsEntity(Entity):
     """Base class for entities belonging to one Auto Chords device."""
 
     _attr_has_entity_name = True
+    _attr_should_poll = False
 
     def __init__(self, manager: AutoChordsManager) -> None:
         """Initialize the entity."""
@@ -36,6 +38,7 @@ class AutoChordsEntity(Entity):
             )
         )
 
+    @callback
     def _async_manager_update(self, entry_id: str) -> None:
         """Write state when this config entry changes."""
         if entry_id == self.manager.entry.entry_id:

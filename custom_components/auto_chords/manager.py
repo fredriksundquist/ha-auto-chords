@@ -52,7 +52,7 @@ class Song:
 
     @property
     def notification_key(self) -> str:
-        """Return the strongest available identity for deduplication."""
+        """Return the strongest available identity for song-change detection."""
         return self.spotify_id or self.match_key
 
 
@@ -103,7 +103,7 @@ class AutoChordsManager:
         }
 
         self._unsub_media: Callable[[], None] | None = None
-        self._last_notified_key: str | None = None
+        self._last_notified_registry_uid: str | None = None
         self._started = False
 
     @property
@@ -183,6 +183,7 @@ class AutoChordsManager:
     async def async_stop(self) -> None:
         """Stop all runtime listeners."""
         self._started = False
+        self._last_notified_registry_uid = None
         self._async_unsubscribe_media()
 
     async def async_set_master_enabled(self, enabled: bool) -> None:
@@ -191,7 +192,7 @@ class AutoChordsManager:
             return
 
         self.master_enabled = enabled
-        self._last_notified_key = None
+        self._last_notified_registry_uid = None
 
         if self._started:
             if enabled:
@@ -343,7 +344,7 @@ class AutoChordsManager:
     @callback
     def _async_media_changed(self, event: Event[EventStateChangedData]) -> None:
         """Handle a selected media-player state change."""
-        if not self.master_enabled:
+        if not self._started or not self.master_enabled:
             return
 
         state = event.data.get("new_state")
@@ -358,6 +359,9 @@ class AutoChordsManager:
 
     async def async_evaluate_current_states(self, *, notify: bool) -> None:
         """Evaluate selected players and use the first currently playing song."""
+        if not self._started or not self.master_enabled:
+            return
+
         for entity_id in self.media_players:
             state = self.hass.states.get(entity_id)
             if state is None:
@@ -369,6 +373,9 @@ class AutoChordsManager:
 
     async def async_process_song(self, song: Song, *, notify: bool = True) -> None:
         """Update current song and send a registered link when appropriate."""
+        if not self._started or not self.master_enabled:
+            return
+
         previous_key = (
             self.current_song.notification_key if self.current_song is not None else None
         )
@@ -380,16 +387,14 @@ class AutoChordsManager:
         registered = self.find_registered(song)
         if registered is None:
             if song_changed:
-                self._last_notified_key = None
+                self._last_notified_registry_uid = None
             return
 
-        # Do not return just because the track identity is unchanged. Media
-        # metadata can arrive in stages; a later artist/title update may turn
-        # an initially unmatched song into a valid fallback match.
+        notify_key = registered.uid
         if (
             not notify
             or not self.notifications_enabled
-            or self._last_notified_key == song.notification_key
+            or self._last_notified_registry_uid == notify_key
         ):
             return
 
@@ -401,20 +406,35 @@ class AutoChordsManager:
         if not enabled_targets:
             return
 
-        await self._async_send_notifications(registered, enabled_targets)
-        self._last_notified_key = song.notification_key
+        # Reserve the registry UID before yielding to the event loop. This
+        # prevents near-simultaneous state events from grouped players from
+        # sending the same registered song more than once.
+        self._last_notified_registry_uid = notify_key
+        sent = await self._async_send_notifications(registered, enabled_targets)
+        if not sent and self._last_notified_registry_uid == notify_key:
+            self._last_notified_registry_uid = None
 
     async def _async_send_notifications(
         self, registered: RegisteredSong, targets: list[str]
-    ) -> None:
-        """Send the chord URL through selected mobile-app notify actions."""
+    ) -> bool:
+        """Send the chord URL and return whether at least one target succeeded."""
         payload = {
             "title": f"🎸 {registered.title}",
             "message": registered.artist or "Auto Chords",
-            "data": {"url": registered.url},
+            "data": {
+                "url": registered.url,
+                "clickAction": registered.url,
+            },
         }
 
+        sent = False
         for target in targets:
+            if (
+                not self._started
+                or not self.master_enabled
+                or not self.notifications_enabled
+            ):
+                break
             if not self.hass.services.has_service("notify", target):
                 _LOGGER.warning("Notify action notify.%s is not available", target)
                 continue
@@ -425,10 +445,12 @@ class AutoChordsManager:
                     payload,
                     blocking=True,
                 )
+                sent = True
             except Exception:
                 _LOGGER.exception(
                     "Failed to send chord notification via notify.%s", target
                 )
+        return sent
 
     async def _async_save(self) -> None:
         """Persist the registry and integration-owned switch settings."""

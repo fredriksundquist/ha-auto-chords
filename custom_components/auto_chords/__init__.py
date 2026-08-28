@@ -27,8 +27,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: AutoChordsConfigEntry) -
 
 async def async_unload_entry(hass: HomeAssistant, entry: AutoChordsConfigEntry) -> bool:
     """Unload an Auto Chords config entry."""
-    await entry.runtime_data.async_stop()
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unload_ok:
+        await entry.runtime_data.async_stop()
+    return unload_ok
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: AutoChordsConfigEntry) -> None:

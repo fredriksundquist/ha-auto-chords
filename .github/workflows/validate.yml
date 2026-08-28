@@ -1,18 +1,10 @@
 name: Validate
 
 on:
-  push:
-  pull_request:
-  schedule:
-    - cron: "0 3 * * *"
   workflow_dispatch:
 
 permissions:
   contents: read
-
-concurrency:
-  group: validate-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
 
 jobs:
   compile:
@@ -40,6 +32,7 @@ jobs:
       - uses: home-assistant/actions/hassfest@master
 
   hacs:
+    if: ${{ github.event.repository.private == false }}
     runs-on: ubuntu-latest
     steps:
       - name: HACS validation

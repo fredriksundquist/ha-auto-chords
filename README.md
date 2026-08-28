@@ -43,24 +43,27 @@ All entities belong to one Home Assistant device named **Auto Chords**:
 
 - **Auto Chords** — master switch. Off means no media-player listener is registered.
 - **Notifications** — global notification mute.
-- **Notify _device_** — one switch per selected notification action.
+- **Notifications: _device_** — one switch per selected notification action.
 - **Current song** — current title plus useful matching/registration attributes.
-- **Chord URL** — URL input used by the registration button.
+- **Chord URL** — transient URL input used by the registration button.
 - **Register current song** — stores/updates the currently detected song.
 - **Registered songs** — editable to-do-list view of the persistent song registry.
 
 ## Stored data
 
-Auto Chords stores only its song registry in Home Assistant's integration storage:
+Auto Chords keeps its own persistent data in one Home Assistant `Store` owned by the config entry. It contains:
 
-- generated registry UID;
+- generated song-registry UID;
 - song title;
 - artist;
 - Spotify track ID when available;
 - normalized artist/title match key;
-- chord/tab URL.
+- chord/tab URL;
+- master-switch state;
+- global notification-switch state;
+- enabled/disabled state for configured notification targets.
 
-The selected media players and notification actions are ordinary Home Assistant config-entry data/options. Switch/text state restoration uses Home Assistant's normal entity restore mechanism.
+The selected media players and notification actions are ordinary Home Assistant config-entry data/options. The **Chord URL** input is deliberately transient and starts empty after a restart; incomplete pasted URLs are not persisted.
 
 Auto Chords does **not**:
 
@@ -70,6 +73,7 @@ Auto Chords does **not**:
 - require Music Assistant;
 - poll the internet;
 - create `input_*` helpers;
+- use Home Assistant restore-state storage for its own switches/text input;
 - register a global Home Assistant state-change listener while enabled. It subscribes only to the selected media-player entity IDs.
 
 ## Uninstall
@@ -77,12 +81,14 @@ Auto Chords does **not**:
 Use this order so Home Assistant can run the integration's cleanup handler:
 
 1. Go to **Settings → Devices & services → Auto Chords** and remove the integration entry.
-2. The integration unloads its media listeners and removes its own persistent song-registry storage.
+2. The integration unloads its media listeners and deletes the config entry's Auto Chords `Store`, including registered songs and switch settings.
 3. Confirm the Auto Chords device/entities are gone from Home Assistant.
 4. Then uninstall Auto Chords in HACS (or remove `custom_components/auto_chords` if it was installed manually).
 5. Restart Home Assistant if requested.
 
 Do **not** delete the integration code before removing the config entry. If the Python files are removed first, Home Assistant cannot execute Auto Chords' `async_remove_entry()` cleanup code.
+
+Normal historical states already written to Home Assistant's Recorder database are controlled by Home Assistant's own retention/purge policy; Auto Chords does not directly modify Recorder history.
 
 ## Matching details
 
@@ -93,6 +99,8 @@ x-sonos-spotify:spotify%3atrack%3a23wea78hoXqfnOE9JciIXy?sid=9&flags=8232&sn=2
 ```
 
 is decoded and the Spotify track ID `23wea78hoXqfnOE9JciIXy` is used as the preferred identity. If no Spotify track ID is present, Auto Chords compares a normalized `artist|title` key.
+
+If the artist/title of a registry entry is changed manually, an old Spotify track ID is discarded so it cannot accidentally keep matching the previous track.
 
 ## Branches
 

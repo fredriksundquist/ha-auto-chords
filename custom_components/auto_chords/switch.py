@@ -5,18 +5,13 @@ from __future__ import annotations
 from typing import Any
 
 from homeassistant.components.switch import SwitchEntity
-from homeassistant.const import STATE_ON, EntityCategory
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
-from homeassistant.helpers.restore_state import RestoreEntity
 
 from . import AutoChordsConfigEntry
-from .const import (
-    DEFAULT_MASTER_ENABLED,
-    DEFAULT_NOTIFICATIONS_ENABLED,
-    DEFAULT_TARGET_ENABLED,
-)
+from .const import DEFAULT_TARGET_ENABLED
 from .entity import AutoChordsEntity
 
 
@@ -52,79 +47,79 @@ def _remove_stale_target_entities(
             registry.async_remove(reg_entry.entity_id)
 
 
-class _RestoredAutoChordsSwitch(AutoChordsEntity, SwitchEntity, RestoreEntity):
-    """Base switch with restore-state behavior."""
+class _AutoChordsSwitch(AutoChordsEntity, SwitchEntity):
+    """Base switch backed by integration-owned storage."""
 
     _attr_entity_category = EntityCategory.CONFIG
 
-    def __init__(self, manager, default: bool) -> None:
-        super().__init__(manager)
-        self._attr_is_on = default
-
-    async def async_added_to_hass(self) -> None:
-        """Restore prior switch state."""
-        await super().async_added_to_hass()
-        if (last_state := await self.async_get_last_state()) is not None:
-            self._attr_is_on = last_state.state == STATE_ON
-        self._apply_to_manager()
-
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn on."""
-        self._attr_is_on = True
-        self._apply_to_manager()
-        self.async_write_ha_state()
+        await self._async_set_enabled(True)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn off."""
-        self._attr_is_on = False
-        self._apply_to_manager()
-        self.async_write_ha_state()
+        await self._async_set_enabled(False)
 
-    def _apply_to_manager(self) -> None:
-        """Apply restored/current state to the manager."""
+    async def _async_set_enabled(self, enabled: bool) -> None:
+        """Apply and persist the requested state."""
         raise NotImplementedError
 
 
-class AutoChordsMasterSwitch(_RestoredAutoChordsSwitch):
+class AutoChordsMasterSwitch(_AutoChordsSwitch):
     """Master runtime switch."""
 
     _attr_name = None
     _attr_icon = "mdi:guitar-acoustic"
 
     def __init__(self, manager) -> None:
-        super().__init__(manager, DEFAULT_MASTER_ENABLED)
+        super().__init__(manager)
         self._attr_unique_id = f"{manager.entry.entry_id}_master"
 
-    def _apply_to_manager(self) -> None:
-        self.manager.set_master_enabled(bool(self._attr_is_on))
+    @property
+    def is_on(self) -> bool:
+        """Return whether tracking is enabled."""
+        return self.manager.master_enabled
+
+    async def _async_set_enabled(self, enabled: bool) -> None:
+        await self.manager.async_set_master_enabled(enabled)
 
 
-class AutoChordsNotificationsSwitch(_RestoredAutoChordsSwitch):
+class AutoChordsNotificationsSwitch(_AutoChordsSwitch):
     """Global notification switch."""
 
     _attr_translation_key = "notifications"
     _attr_icon = "mdi:bell"
 
     def __init__(self, manager) -> None:
-        super().__init__(manager, DEFAULT_NOTIFICATIONS_ENABLED)
+        super().__init__(manager)
         self._attr_unique_id = f"{manager.entry.entry_id}_notifications"
 
-    def _apply_to_manager(self) -> None:
-        self.manager.set_notifications_enabled(bool(self._attr_is_on))
+    @property
+    def is_on(self) -> bool:
+        """Return whether notifications are enabled."""
+        return self.manager.notifications_enabled
+
+    async def _async_set_enabled(self, enabled: bool) -> None:
+        await self.manager.async_set_notifications_enabled(enabled)
 
 
-class AutoChordsTargetSwitch(_RestoredAutoChordsSwitch):
+class AutoChordsTargetSwitch(_AutoChordsSwitch):
     """Enable notifications for one selected notify service."""
 
     _attr_translation_key = "notification_target"
     _attr_icon = "mdi:cellphone-message"
 
     def __init__(self, manager, target: str) -> None:
-        super().__init__(manager, DEFAULT_TARGET_ENABLED)
+        super().__init__(manager)
         self.target = target
         self._attr_unique_id = f"{manager.entry.entry_id}_notify_target_{target}"
         target_name = target.removeprefix("mobile_app_").replace("_", " ")
         self._attr_translation_placeholders = {"target": target_name}
 
-    def _apply_to_manager(self) -> None:
-        self.manager.set_target_enabled(self.target, bool(self._attr_is_on))
+    @property
+    def is_on(self) -> bool:
+        """Return whether this target is enabled."""
+        return self.manager.target_enabled.get(self.target, DEFAULT_TARGET_ENABLED)
+
+    async def _async_set_enabled(self, enabled: bool) -> None:
+        await self.manager.async_set_target_enabled(self.target, enabled)

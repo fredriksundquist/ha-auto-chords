@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from urllib.parse import unquote
+from urllib.parse import unquote, urlparse
 
 _SPOTIFY_TRACK_RE = re.compile(r"spotify:track:([A-Za-z0-9]+)")
 
@@ -12,8 +12,9 @@ _SPOTIFY_TRACK_RE = re.compile(r"spotify:track:([A-Za-z0-9]+)")
 def validate_url(value: str) -> str:
     """Validate and normalize a stored chord URL."""
     value = value.strip()
-    if not value.startswith(("https://", "http://")):
-        raise ValueError("URL must start with http:// or https://")
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("A valid http:// or https:// URL is required")
     return value
 
 

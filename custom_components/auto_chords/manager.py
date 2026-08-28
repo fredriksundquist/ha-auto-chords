@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
-import logging
-import re
-import unicodedata
-from urllib.parse import unquote
+from typing import Any
 from uuid import uuid4
 
 from homeassistant.components.media_player.const import (
@@ -32,9 +30,14 @@ from .const import (
     STORAGE_KEY_PREFIX,
     STORAGE_VERSION,
 )
+from .matching import (
+    build_match_key,
+    extract_spotify_track_id,
+    split_summary,
+    validate_url,
+)
 
 _LOGGER = logging.getLogger(__name__)
-_SPOTIFY_TRACK_RE = re.compile(r"spotify:track:([A-Za-z0-9]+)")
 
 
 @dataclass(slots=True)
@@ -83,11 +86,12 @@ class AutoChordsManager:
         """Initialize the manager."""
         self.hass = hass
         self.entry = entry
-        self.store: Store[dict] = Store(
+        self.store: Store[dict[str, Any]] = Store(
             hass,
             STORAGE_VERSION,
             f"{STORAGE_KEY_PREFIX}.{entry.entry_id}",
         )
+
         self.songs: dict[str, RegisteredSong] = {}
         self.current_song: Song | None = None
         self.registration_url = ""
@@ -103,8 +107,8 @@ class AutoChordsManager:
         self._started = False
 
     @property
-    def config(self) -> dict:
-        """Return merged data and options."""
+    def config(self) -> dict[str, Any]:
+        """Return merged config-entry data and options."""
         return {**self.entry.data, **self.entry.options}
 
     @property
@@ -114,51 +118,64 @@ class AutoChordsManager:
 
     @property
     def notify_services(self) -> list[str]:
-        """Return selected notify service names without the domain."""
+        """Return selected mobile-app notify actions without the domain."""
         return list(self.config.get(CONF_NOTIFY_SERVICES, []))
 
     async def async_load(self) -> None:
-        """Load registry and integration-owned runtime settings."""
+        """Load the song registry and integration-owned settings."""
         data = await self.store.async_load() or {}
-        for raw in data.get("songs", []):
-            try:
-                song = RegisteredSong(
-                    uid=raw["uid"],
-                    title=raw["title"],
-                    artist=raw["artist"],
-                    spotify_id=raw.get("spotify_id"),
-                    match_key=raw["match_key"],
-                    url=raw["url"],
-                )
-            except (KeyError, TypeError):
-                _LOGGER.warning("Ignoring malformed song registry entry")
-                continue
-            self.songs[song.uid] = song
+
+        songs = data.get("songs", [])
+        if isinstance(songs, list):
+            for raw in songs:
+                if not isinstance(raw, dict):
+                    _LOGGER.warning("Ignoring malformed song registry entry")
+                    continue
+                try:
+                    song = RegisteredSong(
+                        uid=str(raw["uid"]),
+                        title=str(raw["title"]),
+                        artist=str(raw["artist"]),
+                        spotify_id=(
+                            str(raw["spotify_id"])
+                            if raw.get("spotify_id") is not None
+                            else None
+                        ),
+                        match_key=str(raw["match_key"]),
+                        url=str(raw["url"]),
+                    )
+                except KeyError:
+                    _LOGGER.warning("Ignoring malformed song registry entry")
+                    continue
+                self.songs[song.uid] = song
 
         settings = data.get("settings", {})
-        if isinstance(settings, dict):
-            self.master_enabled = bool(
-                settings.get("master_enabled", DEFAULT_MASTER_ENABLED)
-            )
-            self.notifications_enabled = bool(
-                settings.get(
-                    "notifications_enabled", DEFAULT_NOTIFICATIONS_ENABLED
-                )
-            )
-            stored_targets = settings.get("target_enabled", {})
-            if not isinstance(stored_targets, dict):
-                stored_targets = {}
-            self.target_enabled = {
-                target: bool(stored_targets.get(target, DEFAULT_TARGET_ENABLED))
-                for target in self.notify_services
-            }
+        if not isinstance(settings, dict):
+            settings = {}
+
+        self.master_enabled = bool(
+            settings.get("master_enabled", DEFAULT_MASTER_ENABLED)
+        )
+        self.notifications_enabled = bool(
+            settings.get("notifications_enabled", DEFAULT_NOTIFICATIONS_ENABLED)
+        )
+
+        stored_targets = settings.get("target_enabled", {})
+        if not isinstance(stored_targets, dict):
+            stored_targets = {}
+        self.target_enabled = {
+            target: bool(stored_targets.get(target, DEFAULT_TARGET_ENABLED))
+            for target in self.notify_services
+        }
 
     async def async_start(self) -> None:
-        """Start runtime listeners if enabled."""
+        """Start runtime listeners when the master switch is enabled."""
         self._started = True
-        # Re-save once at startup so settings for removed notification targets
-        # are pruned from the integration-owned store.
+
+        # Re-save once so settings belonging to removed notification targets
+        # disappear from integration-owned storage.
         await self._async_save()
+
         if self.master_enabled:
             self._async_subscribe_media()
             await self.async_evaluate_current_states(notify=False)
@@ -169,9 +186,10 @@ class AutoChordsManager:
         self._async_unsubscribe_media()
 
     async def async_set_master_enabled(self, enabled: bool) -> None:
-        """Enable or disable media tracking and persist the choice."""
+        """Enable or disable song tracking and persist the choice."""
         if self.master_enabled == enabled:
             return
+
         self.master_enabled = enabled
         self._last_notified_key = None
 
@@ -189,7 +207,7 @@ class AutoChordsManager:
             await self.async_evaluate_current_states(notify=True)
 
     async def async_set_notifications_enabled(self, enabled: bool) -> None:
-        """Enable or disable all outgoing notifications and persist the choice."""
+        """Enable or disable all outgoing notifications."""
         if self.notifications_enabled == enabled:
             return
         self.notifications_enabled = enabled
@@ -197,7 +215,7 @@ class AutoChordsManager:
         self._signal_update()
 
     async def async_set_target_enabled(self, target: str, enabled: bool) -> None:
-        """Set and persist the state for a notification target."""
+        """Enable or disable one configured notification target."""
         if target not in self.notify_services:
             return
         if self.target_enabled.get(target, DEFAULT_TARGET_ENABLED) == enabled:
@@ -208,17 +226,18 @@ class AutoChordsManager:
 
     @callback
     def set_registration_url(self, value: str) -> None:
-        """Set the transient registration URL input value."""
+        """Set the transient URL used by the registration button."""
         self.registration_url = value.strip()
         self._signal_update()
 
     async def async_register_current_song(self, url: str) -> RegisteredSong:
-        """Register or update the current song."""
+        """Register or update the currently detected song."""
         if self.current_song is None:
             raise ValueError("No current song is available")
-        url = validate_url(url)
 
+        url = validate_url(url)
         existing = self.find_registered(self.current_song)
+
         if existing is None:
             registered = RegisteredSong(
                 uid=uuid4().hex,
@@ -242,7 +261,9 @@ class AutoChordsManager:
         self._signal_update()
         return registered
 
-    async def async_create_registry_song(self, summary: str, url: str) -> RegisteredSong:
+    async def async_create_registry_song(
+        self, summary: str, url: str
+    ) -> RegisteredSong:
         """Create a registry item manually from the to-do list."""
         artist, title = split_summary(summary)
         registered = RegisteredSong(
@@ -265,10 +286,12 @@ class AutoChordsManager:
         registered = self.songs[uid]
         artist, title = split_summary(summary)
         new_match_key = build_match_key(artist, title)
+
         if new_match_key != registered.match_key:
-            # The item now describes a different song. An old Spotify identity
-            # must not continue to match the previous track.
+            # The visible item now describes a different song; an old Spotify
+            # identity must not keep matching the previous track.
             registered.spotify_id = None
+
         registered.artist = artist
         registered.title = title
         registered.match_key = new_match_key
@@ -284,13 +307,15 @@ class AutoChordsManager:
         self._signal_update()
 
     def find_registered(self, song: Song | None) -> RegisteredSong | None:
-        """Find a registered match for a song."""
+        """Find the best registered match for a song."""
         if song is None:
             return None
+
         if song.spotify_id:
             for item in self.songs.values():
                 if item.spotify_id == song.spotify_id:
                     return item
+
         for item in self.songs.values():
             if item.match_key == song.match_key:
                 return item
@@ -298,7 +323,7 @@ class AutoChordsManager:
 
     @callback
     def _async_subscribe_media(self) -> None:
-        """Subscribe to selected media players."""
+        """Subscribe only to the selected media-player entity IDs."""
         if self._unsub_media is not None or not self.media_players:
             return
         self._unsub_media = async_track_state_change_event(
@@ -309,7 +334,7 @@ class AutoChordsManager:
 
     @callback
     def _async_unsubscribe_media(self) -> None:
-        """Unsubscribe from media player state changes."""
+        """Disconnect the media-player listener."""
         if self._unsub_media is None:
             return
         self._unsub_media()
@@ -317,19 +342,22 @@ class AutoChordsManager:
 
     @callback
     def _async_media_changed(self, event: Event[EventStateChangedData]) -> None:
-        """Handle a selected media player state change."""
+        """Handle a selected media-player state change."""
         if not self.master_enabled:
             return
+
         state = event.data.get("new_state")
         if state is None:
             return
+
         song = song_from_state(state)
         if song is None:
             return
+
         self.hass.async_create_task(self.async_process_song(song))
 
     async def async_evaluate_current_states(self, *, notify: bool) -> None:
-        """Evaluate current player states, preferring an active player."""
+        """Evaluate selected players and use the first currently playing song."""
         for entity_id in self.media_players:
             state = self.hass.states.get(entity_id)
             if state is None:
@@ -340,22 +368,24 @@ class AutoChordsManager:
                 return
 
     async def async_process_song(self, song: Song, *, notify: bool = True) -> None:
-        """Set the current song and possibly send its registered URL."""
-        same_song = (
-            self.current_song is not None
-            and self.current_song.notification_key == song.notification_key
+        """Update current song and send a registered link when appropriate."""
+        previous_key = (
+            self.current_song.notification_key if self.current_song is not None else None
         )
+        song_changed = previous_key != song.notification_key
+
         self.current_song = song
         self._signal_update()
 
-        if same_song:
-            return
-
         registered = self.find_registered(song)
         if registered is None:
-            self._last_notified_key = None
+            if song_changed:
+                self._last_notified_key = None
             return
 
+        # Do not return just because the track identity is unchanged. Media
+        # metadata can arrive in stages; a later artist/title update may turn
+        # an initially unmatched song into a valid fallback match.
         if (
             not notify
             or not self.notifications_enabled
@@ -377,12 +407,10 @@ class AutoChordsManager:
     async def _async_send_notifications(
         self, registered: RegisteredSong, targets: list[str]
     ) -> None:
-        """Send the chord URL through selected mobile app notify services."""
-        title = f"🎸 {registered.title}"
-        message = registered.artist or "Auto Chords"
+        """Send the chord URL through selected mobile-app notify actions."""
         payload = {
-            "title": title,
-            "message": message,
+            "title": f"🎸 {registered.title}",
+            "message": registered.artist or "Auto Chords",
             "data": {"url": registered.url},
         }
 
@@ -398,7 +426,9 @@ class AutoChordsManager:
                     blocking=True,
                 )
             except Exception:
-                _LOGGER.exception("Failed to send chord notification via notify.%s", target)
+                _LOGGER.exception(
+                    "Failed to send chord notification via notify.%s", target
+                )
 
     async def _async_save(self) -> None:
         """Persist the registry and integration-owned switch settings."""
@@ -409,9 +439,7 @@ class AutoChordsManager:
                     "master_enabled": self.master_enabled,
                     "notifications_enabled": self.notifications_enabled,
                     "target_enabled": {
-                        target: self.target_enabled.get(
-                            target, DEFAULT_TARGET_ENABLED
-                        )
+                        target: self.target_enabled.get(target, DEFAULT_TARGET_ENABLED)
                         for target in self.notify_services
                     },
                 },
@@ -420,49 +448,23 @@ class AutoChordsManager:
 
     @callback
     def _signal_update(self) -> None:
-        """Notify entities that in-memory state changed."""
+        """Notify integration entities that in-memory state changed."""
         async_dispatcher_send(self.hass, SIGNAL_UPDATE, self.entry.entry_id)
 
 
-def validate_url(value: str) -> str:
-    """Validate and normalize a stored chord URL."""
-    value = value.strip()
-    if not value.startswith(("https://", "http://")):
-        raise ValueError("URL must start with http:// or https://")
-    return value
-
-
-def normalize(value: str) -> str:
-    """Normalize artist/title text for fallback matching."""
-    value = unicodedata.normalize("NFKC", value).casefold()
-    value = "".join(char if char.isalnum() else " " for char in value)
-    return " ".join(value.split())
-
-
-def build_match_key(artist: str, title: str) -> str:
-    """Build the fallback song match key."""
-    return f"{normalize(artist)}|{normalize(title)}"
-
-
-def extract_spotify_track_id(content_id: object) -> str | None:
-    """Extract a Spotify track ID from Sonos/Spotify media content IDs."""
-    if not isinstance(content_id, str):
-        return None
-    decoded = unquote(content_id)
-    match = _SPOTIFY_TRACK_RE.search(decoded)
-    return match.group(1) if match else None
-
-
 def song_from_state(state: State) -> Song | None:
-    """Build song metadata from a media player state."""
+    """Build song metadata from a playing media-player state."""
     if state.state != MediaPlayerState.PLAYING:
         return None
+
     title = state.attributes.get(ATTR_MEDIA_TITLE)
     artist = state.attributes.get(ATTR_MEDIA_ARTIST)
+
     if not isinstance(title, str) or not title.strip():
         return None
     if not isinstance(artist, str):
         artist = ""
+
     title = title.strip()
     artist = artist.strip()
     return Song(
@@ -474,15 +476,3 @@ def song_from_state(state: State) -> Song | None:
         ),
         match_key=build_match_key(artist, title),
     )
-
-
-def split_summary(summary: str) -> tuple[str, str]:
-    """Split the visible 'Artist – Title' registry summary."""
-    summary = summary.strip()
-    if " – " in summary:
-        artist, title = summary.split(" – ", 1)
-        return artist.strip(), title.strip()
-    if " - " in summary:
-        artist, title = summary.split(" - ", 1)
-        return artist.strip(), title.strip()
-    return "", summary

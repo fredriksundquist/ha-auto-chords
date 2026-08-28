@@ -1,10 +1,11 @@
 """Tests for pure Auto Chords matching helpers."""
 
-from custom_components.auto_chords.manager import (
+from custom_components.auto_chords.matching import (
     build_match_key,
     extract_spotify_track_id,
     normalize,
     split_summary,
+    validate_url,
 )
 
 
@@ -33,3 +34,8 @@ def test_split_summary() -> None:
     """Visible registry names split into artist and title."""
     assert split_summary("Ola Bremnes – Lofotbrev") == ("Ola Bremnes", "Lofotbrev")
     assert split_summary("Lofotbrev") == ("", "Lofotbrev")
+
+
+def test_validate_url() -> None:
+    """Chord URLs must be explicit HTTP(S) URLs."""
+    assert validate_url(" https://tabs.example/song ") == "https://tabs.example/song"

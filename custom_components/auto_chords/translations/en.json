@@ -1,6 +1,9 @@
 {
   "title": "Auto Chords",
   "config": {
+    "abort": {
+      "single_instance_allowed": "Only one Auto Chords instance can be configured."
+    },
     "step": {
       "user": {
         "title": "Choose sources and notification targets",

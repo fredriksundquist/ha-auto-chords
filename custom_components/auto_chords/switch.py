@@ -88,7 +88,7 @@ class _RestoredAutoChordsSwitch(AutoChordsEntity, SwitchEntity, RestoreEntity):
 class AutoChordsMasterSwitch(_RestoredAutoChordsSwitch):
     """Master runtime switch."""
 
-    _attr_translation_key = "master"
+    _attr_name = None
     _attr_icon = "mdi:guitar-acoustic"
 
     def __init__(self, manager) -> None:
@@ -116,13 +116,15 @@ class AutoChordsNotificationsSwitch(_RestoredAutoChordsSwitch):
 class AutoChordsTargetSwitch(_RestoredAutoChordsSwitch):
     """Enable notifications for one selected notify service."""
 
+    _attr_translation_key = "notification_target"
     _attr_icon = "mdi:cellphone-message"
 
     def __init__(self, manager, target: str) -> None:
         super().__init__(manager, DEFAULT_TARGET_ENABLED)
         self.target = target
         self._attr_unique_id = f"{manager.entry.entry_id}_notify_target_{target}"
-        self._attr_name = f"Notify {target.removeprefix('mobile_app_').replace('_', ' ')}"
+        target_name = target.removeprefix("mobile_app_").replace("_", " ")
+        self._attr_translation_placeholders = {"target": target_name}
 
     def _apply_to_manager(self) -> None:
         self.manager.set_target_enabled(self.target, bool(self._attr_is_on))

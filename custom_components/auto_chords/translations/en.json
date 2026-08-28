@@ -39,8 +39,8 @@
       "current_song": {"name": "Current song"}
     },
     "switch": {
-      "master": {"name": "Auto Chords"},
-      "notifications": {"name": "Notifications"}
+      "notifications": {"name": "Notifications"},
+      "notification_target": {"name": "Notifications: {target}"}
     },
     "text": {
       "registration_url": {"name": "Chord URL"}

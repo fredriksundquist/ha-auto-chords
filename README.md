@@ -2,7 +2,7 @@
 
 Auto Chords is a Home Assistant custom integration that links songs playing on selected `media_player` entities to chord/tab URLs and can send the registered link as a clickable Home Assistant Companion notification.
 
-> **Development status:** `0.1.0-alpha.1` is code-complete for the first Home Assistant test. The `dev` branch has passed Python compilation, Ruff and Home Assistant hassfest validation, but has not yet been installed on the target Home Assistant instance. Keep `main` unchanged until the first review/test decision.
+> **Development status:** `0.1.0-alpha.1` is prepared for the first Home Assistant test, but has not yet been installed on the target Home Assistant instance. The current review build on `dev` has passed Python 3.14.2 compilation, Ruff, pytest against Home Assistant 2026.8.3, Home Assistant hassfest and HACS validation. Keep the warning above until the first real Home Assistant test has succeeded.
 
 ## V0.1 behavior
 
@@ -14,14 +14,15 @@ Auto Chords is a Home Assistant custom integration that links songs playing on s
 - Shows the latest detected song in a sensor with artist, source player, Spotify track ID, registration status and registered URL as attributes.
 - Register the current song by pasting an HTTP/HTTPS chord URL into the **Chord URL** text entity and pressing **Register current song**.
 - Registered songs are exposed through a standard Home Assistant to-do list so entries can be viewed, edited and deleted in the existing frontend.
-- Suppresses duplicate notifications when grouped players expose the same Spotify track.
+- Suppresses duplicate notifications when grouped players resolve to the same registered song.
 - Re-evaluates matching when media metadata becomes more complete, so staged Sonos metadata updates do not prevent a valid match.
+- Sends the registered link using the Companion notification URL fields for both iOS and Android.
 
 ## Installation later via HACS custom repository
 
-This repository is structured as a HACS integration repository. HACS requires GitHub repositories to be public, so the repository can remain private during development/review but must be made public before HACS installation or HACS validation can be treated as authoritative.
+This repository is structured as a HACS integration repository and is public so HACS can access it. The current review build has passed HACS repository validation.
 
-Once the repository is public and a reviewed build is on `main`:
+After the reviewed build has been merged to `main`:
 
 1. In HACS, open the menu and choose **Custom repositories**.
 2. Add `https://github.com/fredriksundquist/ha-auto-chords` as type **Integration**.
@@ -37,6 +38,8 @@ The config flow asks for:
 - one or more currently registered `notify.mobile_app_*` actions.
 
 The notification target list comes from Home Assistant's registered `notify` actions at the moment the config/options form is opened. If a Companion device is renamed or its notify action changes, open the integration options and select the new action.
+
+For the first test, selecting one Sonos player or players that represent the same synchronized playback is recommended. Multiple independent players that are playing different songs at the same time do not yet have a source-priority policy.
 
 ## Entities
 
@@ -79,15 +82,17 @@ Auto Chords does **not**:
 
 ## Validation
 
-The private `dev` build has passed:
+The current review build has passed:
 
-- Python 3.13 source compilation;
+- Python 3.14.2 source compilation;
 - Ruff static checks;
-- Home Assistant hassfest.
+- pytest while importing Home Assistant 2026.8.3;
+- Home Assistant hassfest;
+- HACS integration repository validation.
 
-HACS validation is intentionally not used as a release gate while the repository is private. HACS' current repository requirements are for public GitHub repositories; run the HACS validation again after the repository is public and the reviewed code is on the default branch.
+The focused tests cover matching helpers, URL validation, concurrent notification deduplication, mixed Spotify/fallback identity, queued-task lifecycle after stop, iOS/Android notification link data, and config-entry unload ordering.
 
-Passing these checks does not replace testing the integration in a real Home Assistant instance.
+Passing these checks does not replace testing the integration in a real Home Assistant instance. The first target-instance installation is still the next release gate.
 
 ## Uninstall
 
@@ -112,6 +117,8 @@ x-sonos-spotify:spotify%3atrack%3a23wea78hoXqfnOE9JciIXy?sid=9&flags=8232&sn=2
 ```
 
 is decoded and the Spotify track ID `23wea78hoXqfnOE9JciIXy` is used as the preferred identity. If no Spotify track ID is present, Auto Chords compares a normalized `artist|title` key.
+
+Notification deduplication is based on the matched registry item's UID. This avoids duplicate notifications when one selected player exposes a Spotify ID while another reaches the same registered song through artist/title fallback.
 
 If the artist/title of a registry entry is changed manually, an old Spotify track ID is discarded so it cannot accidentally keep matching the previous track.
 

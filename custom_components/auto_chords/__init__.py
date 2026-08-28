@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.storage import Store
 
-from .const import DOMAIN, PLATFORMS, STORAGE_KEY_PREFIX, STORAGE_VERSION
+from .const import PLATFORMS, STORAGE_KEY_PREFIX, STORAGE_VERSION
 from .manager import AutoChordsManager
 
 
@@ -32,8 +33,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: AutoChordsConfigEntry) 
 
 async def async_remove_entry(hass: HomeAssistant, entry: AutoChordsConfigEntry) -> None:
     """Remove integration-owned persistent data."""
-    from homeassistant.helpers.storage import Store
-
     store: Store[dict] = Store(
         hass,
         STORAGE_VERSION,

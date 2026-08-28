@@ -55,8 +55,8 @@ class AutoChordsSongRegistry(AutoChordsEntity, TodoListEntity):
         if not item.summary:
             raise HomeAssistantError("A song name is required")
         url = (item.description or "").strip()
-        if url and not url.startswith(("https://", "http://")):
-            raise HomeAssistantError("URL must start with http:// or https://")
+        if not url.startswith(("https://", "http://")):
+            raise HomeAssistantError("A chord URL starting with http:// or https:// is required")
         await self.manager.async_create_registry_song(item.summary, url)
 
     async def async_update_todo_item(self, item: TodoItem) -> None:
@@ -66,8 +66,8 @@ class AutoChordsSongRegistry(AutoChordsEntity, TodoListEntity):
         if not item.summary:
             raise HomeAssistantError("A song name is required")
         url = (item.description or "").strip()
-        if url and not url.startswith(("https://", "http://")):
-            raise HomeAssistantError("URL must start with http:// or https://")
+        if not url.startswith(("https://", "http://")):
+            raise HomeAssistantError("A chord URL starting with http:// or https:// is required")
         await self.manager.async_update_registry_song(item.uid, item.summary, url)
 
     async def async_delete_todo_items(self, uids: list[str]) -> None:

@@ -39,8 +39,8 @@
       "current_song": {"name": "Gjeldende sang"}
     },
     "switch": {
-      "master": {"name": "Auto Chords"},
-      "notifications": {"name": "Varslinger"}
+      "notifications": {"name": "Varslinger"},
+      "notification_target": {"name": "Varslinger: {target}"}
     },
     "text": {
       "registration_url": {"name": "Akkordlenke"}

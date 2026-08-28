@@ -1,4 +1,4 @@
-# Auto Chords
+# Auto Chords  DANGER! NOT FINISH! FIRST TEST!
 
 Auto Chords is a Home Assistant custom integration that links songs playing on selected `media_player` entities to chord/tab URLs and can send the registered link as a clickable Home Assistant Companion notification.
 

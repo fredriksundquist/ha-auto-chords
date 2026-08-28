@@ -118,7 +118,7 @@ class AutoChordsManager:
         return list(self.config.get(CONF_NOTIFY_SERVICES, []))
 
     async def async_load(self) -> None:
-        """Load the song registry."""
+        """Load registry and integration-owned runtime settings."""
         data = await self.store.async_load() or {}
         for raw in data.get("songs", []):
             try:
@@ -135,9 +135,30 @@ class AutoChordsManager:
                 continue
             self.songs[song.uid] = song
 
+        settings = data.get("settings", {})
+        if isinstance(settings, dict):
+            self.master_enabled = bool(
+                settings.get("master_enabled", DEFAULT_MASTER_ENABLED)
+            )
+            self.notifications_enabled = bool(
+                settings.get(
+                    "notifications_enabled", DEFAULT_NOTIFICATIONS_ENABLED
+                )
+            )
+            stored_targets = settings.get("target_enabled", {})
+            if not isinstance(stored_targets, dict):
+                stored_targets = {}
+            self.target_enabled = {
+                target: bool(stored_targets.get(target, DEFAULT_TARGET_ENABLED))
+                for target in self.notify_services
+            }
+
     async def async_start(self) -> None:
         """Start runtime listeners if enabled."""
         self._started = True
+        # Re-save once at startup so settings for removed notification targets
+        # are pruned from the integration-owned store.
+        await self._async_save()
         if self.master_enabled:
             self._async_subscribe_media()
             await self.async_evaluate_current_states(notify=False)
@@ -147,39 +168,47 @@ class AutoChordsManager:
         self._started = False
         self._async_unsubscribe_media()
 
-    @callback
-    def set_master_enabled(self, enabled: bool) -> None:
-        """Enable or disable media tracking."""
+    async def async_set_master_enabled(self, enabled: bool) -> None:
+        """Enable or disable media tracking and persist the choice."""
         if self.master_enabled == enabled:
             return
         self.master_enabled = enabled
         self._last_notified_key = None
-        if not self._started:
-            self._signal_update()
-            return
-        if enabled:
-            self._async_subscribe_media()
-            self.hass.async_create_task(self.async_evaluate_current_states(notify=True))
-        else:
-            self._async_unsubscribe_media()
-            self.current_song = None
-            self._signal_update()
 
-    @callback
-    def set_notifications_enabled(self, enabled: bool) -> None:
-        """Enable or disable all outgoing notifications."""
-        self.notifications_enabled = enabled
+        if self._started:
+            if enabled:
+                self._async_subscribe_media()
+            else:
+                self._async_unsubscribe_media()
+                self.current_song = None
+
+        await self._async_save()
         self._signal_update()
 
-    @callback
-    def set_target_enabled(self, target: str, enabled: bool) -> None:
-        """Set the runtime state for a notification target."""
+        if self._started and enabled:
+            await self.async_evaluate_current_states(notify=True)
+
+    async def async_set_notifications_enabled(self, enabled: bool) -> None:
+        """Enable or disable all outgoing notifications and persist the choice."""
+        if self.notifications_enabled == enabled:
+            return
+        self.notifications_enabled = enabled
+        await self._async_save()
+        self._signal_update()
+
+    async def async_set_target_enabled(self, target: str, enabled: bool) -> None:
+        """Set and persist the state for a notification target."""
+        if target not in self.notify_services:
+            return
+        if self.target_enabled.get(target, DEFAULT_TARGET_ENABLED) == enabled:
+            return
         self.target_enabled[target] = enabled
+        await self._async_save()
         self._signal_update()
 
     @callback
     def set_registration_url(self, value: str) -> None:
-        """Set the registration URL input value."""
+        """Set the transient registration URL input value."""
         self.registration_url = value.strip()
         self._signal_update()
 
@@ -372,9 +401,21 @@ class AutoChordsManager:
                 _LOGGER.exception("Failed to send chord notification via notify.%s", target)
 
     async def _async_save(self) -> None:
-        """Persist the song registry."""
+        """Persist the registry and integration-owned switch settings."""
         await self.store.async_save(
-            {"songs": [song.as_dict() for song in self.songs.values()]}
+            {
+                "songs": [song.as_dict() for song in self.songs.values()],
+                "settings": {
+                    "master_enabled": self.master_enabled,
+                    "notifications_enabled": self.notifications_enabled,
+                    "target_enabled": {
+                        target: self.target_enabled.get(
+                            target, DEFAULT_TARGET_ENABLED
+                        )
+                        for target in self.notify_services
+                    },
+                },
+            }
         )
 
     @callback

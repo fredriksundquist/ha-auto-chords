@@ -1,5 +1,7 @@
 """Tests for pure Auto Chords matching helpers."""
 
+import pytest
+
 from custom_components.auto_chords.matching import (
     build_match_key,
     extract_spotify_track_id,
@@ -37,5 +39,9 @@ def test_split_summary() -> None:
 
 
 def test_validate_url() -> None:
-    """Chord URLs must be explicit HTTP(S) URLs."""
+    """Chord URLs must be complete HTTP(S) URLs."""
     assert validate_url(" https://tabs.example/song ") == "https://tabs.example/song"
+
+    for invalid in ("", "tabs.example/song", "https://", "http://", "ftp://tabs.example"):
+        with pytest.raises(ValueError):
+            validate_url(invalid)

@@ -1,0 +1,14 @@
+{
+  "domain": "auto_chords",
+  "name": "Auto Chords",
+  "codeowners": ["@fredriksundquist"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/fredriksundquist/ha-auto-chords",
+  "integration_type": "helper",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/fredriksundquist/ha-auto-chords/issues",
+  "requirements": [],
+  "single_config_entry": true,
+  "version": "0.1.0-alpha.1"
+}

@@ -1,0 +1,55 @@
+{
+  "title": "Auto Chords",
+  "config": {
+    "abort": {
+      "single_instance_allowed": "Only one Auto Chords instance can be configured."
+    },
+    "step": {
+      "user": {
+        "title": "Choose sources and notification targets",
+        "description": "Select the media players to watch and the Home Assistant Companion notification actions that may receive chord links.",
+        "data": {
+          "media_players": "Media players",
+          "notify_services": "Notification targets"
+        },
+        "data_description": {
+          "media_players": "Auto Chords only listens to these entities while its master switch is on.",
+          "notify_services": "Only mobile_app notification actions currently registered in Home Assistant are shown."
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Sources and notification targets",
+        "data": {
+          "media_players": "Media players",
+          "notify_services": "Notification targets"
+        },
+        "data_description": {
+          "media_players": "Change which media players Auto Chords watches.",
+          "notify_services": "Change which mobile_app notification actions are available as target switches."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "current_song": {"name": "Current song"}
+    },
+    "switch": {
+      "notifications": {"name": "Notifications"},
+      "notification_target": {"name": "Notifications: {target}"}
+    },
+    "text": {
+      "registration_url": {"name": "Chord URL"}
+    },
+    "button": {
+      "register_current_song": {"name": "Register current song"}
+    },
+    "todo": {
+      "registered_songs": {"name": "Registered songs"}
+    }
+  }
+}

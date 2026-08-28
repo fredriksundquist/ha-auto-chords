@@ -1,0 +1,55 @@
+{
+  "title": "Auto Chords",
+  "config": {
+    "abort": {
+      "single_instance_allowed": "Bare én Auto Chords-instans kan konfigureres."
+    },
+    "step": {
+      "user": {
+        "title": "Velg kilder og varslingsmål",
+        "description": "Velg mediespillerne som skal overvåkes og Home Assistant Companion-varslene som kan motta akkordlenker.",
+        "data": {
+          "media_players": "Mediespillere",
+          "notify_services": "Varslingsmål"
+        },
+        "data_description": {
+          "media_players": "Auto Chords lytter bare til disse entitetene når hovedbryteren er på.",
+          "notify_services": "Bare mobile_app-varslingshandlinger som er registrert i Home Assistant vises."
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Kilder og varslingsmål",
+        "data": {
+          "media_players": "Mediespillere",
+          "notify_services": "Varslingsmål"
+        },
+        "data_description": {
+          "media_players": "Endre hvilke mediespillere Auto Chords overvåker.",
+          "notify_services": "Endre hvilke mobile_app-varslingshandlinger som skal få egne målbrytere."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "current_song": {"name": "Gjeldende sang"}
+    },
+    "switch": {
+      "notifications": {"name": "Varslinger"},
+      "notification_target": {"name": "Varslinger: {target}"}
+    },
+    "text": {
+      "registration_url": {"name": "Akkordlenke"}
+    },
+    "button": {
+      "register_current_song": {"name": "Registrer gjeldende sang"}
+    },
+    "todo": {
+      "registered_songs": {"name": "Registrerte sanger"}
+    }
+  }
+}

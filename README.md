@@ -2,9 +2,9 @@
 
 Auto Chords is a Home Assistant custom integration that links songs playing on selected `media_player` entities to chord/tab URLs and can send the registered link as a clickable Home Assistant Companion notification.
 
-> **Development status:** `0.1.0-alpha.1` is an early review build. The `dev` branch is not intended for installation. Install only a reviewed release from `main`.
+> **Development status:** `0.1.0-alpha.1` is code-complete for the first Home Assistant test. The `dev` branch has passed Python compilation, Ruff and Home Assistant hassfest validation, but has not yet been installed on the target Home Assistant instance. Keep `main` unchanged until the first review/test decision.
 
-## Planned V0.1 behavior
+## V0.1 behavior
 
 - Watches only the `media_player` entities selected in the integration setup.
 - A true master switch disconnects the media state listeners while disabled.
@@ -14,19 +14,20 @@ Auto Chords is a Home Assistant custom integration that links songs playing on s
 - Shows the latest detected song in a sensor with artist, source player, Spotify track ID, registration status and registered URL as attributes.
 - Register the current song by pasting an HTTP/HTTPS chord URL into the **Chord URL** text entity and pressing **Register current song**.
 - Registered songs are exposed through a standard Home Assistant to-do list so entries can be viewed, edited and deleted in the existing frontend.
-- Suppresses duplicate notifications when grouped players expose the same track change.
+- Suppresses duplicate notifications when grouped players expose the same Spotify track.
+- Re-evaluates matching when media metadata becomes more complete, so staged Sonos metadata updates do not prevent a valid match.
 
 ## Installation later via HACS custom repository
 
-This repository is structured as a HACS integration repository. Once a release is marked testable:
+This repository is structured as a HACS integration repository. HACS requires GitHub repositories to be public, so the repository can remain private during development/review but must be made public before HACS installation or HACS validation can be treated as authoritative.
+
+Once the repository is public and a reviewed build is on `main`:
 
 1. In HACS, open the menu and choose **Custom repositories**.
 2. Add `https://github.com/fredriksundquist/ha-auto-chords` as type **Integration**.
 3. Download Auto Chords.
 4. Restart Home Assistant.
 5. Add **Auto Chords** under **Settings → Devices & services**.
-
-HACS currently requires GitHub repositories to be public. While this repository remains private, keep development/review in GitHub and do not attempt HACS installation.
 
 ## Configuration
 
@@ -75,6 +76,18 @@ Auto Chords does **not**:
 - create `input_*` helpers;
 - use Home Assistant restore-state storage for its own switches/text input;
 - register a global Home Assistant state-change listener while enabled. It subscribes only to the selected media-player entity IDs.
+
+## Validation
+
+The private `dev` build has passed:
+
+- Python 3.13 source compilation;
+- Ruff static checks;
+- Home Assistant hassfest.
+
+HACS validation is intentionally not used as a release gate while the repository is private. HACS' current repository requirements are for public GitHub repositories; run the HACS validation again after the repository is public and the reviewed code is on the default branch.
+
+Passing these checks does not replace testing the integration in a real Home Assistant instance.
 
 ## Uninstall
 

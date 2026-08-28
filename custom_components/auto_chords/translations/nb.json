@@ -1,6 +1,9 @@
 {
   "title": "Auto Chords",
   "config": {
+    "abort": {
+      "single_instance_allowed": "Bare én Auto Chords-instans kan konfigureres."
+    },
     "step": {
       "user": {
         "title": "Velg kilder og varslingsmål",

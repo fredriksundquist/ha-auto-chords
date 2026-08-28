@@ -147,10 +147,6 @@ class AutoChordsManager:
         self._started = False
         self._async_unsubscribe_media()
 
-    async def async_remove_storage(self) -> None:
-        """Delete all integration-owned persistent song data."""
-        await self.store.async_remove()
-
     @callback
     def set_master_enabled(self, enabled: bool) -> None:
         """Enable or disable media tracking."""
@@ -191,8 +187,7 @@ class AutoChordsManager:
         """Register or update the current song."""
         if self.current_song is None:
             raise ValueError("No current song is available")
-        if not url.startswith(("https://", "http://")):
-            raise ValueError("URL must start with http:// or https://")
+        url = validate_url(url)
 
         existing = self.find_registered(self.current_song)
         if existing is None:
@@ -227,7 +222,7 @@ class AutoChordsManager:
             artist=artist,
             spotify_id=None,
             match_key=build_match_key(artist, title),
-            url=url.strip(),
+            url=validate_url(url),
         )
         self.songs[registered.uid] = registered
         await self._async_save()
@@ -240,10 +235,15 @@ class AutoChordsManager:
         """Update a registry item from the to-do list."""
         registered = self.songs[uid]
         artist, title = split_summary(summary)
+        new_match_key = build_match_key(artist, title)
+        if new_match_key != registered.match_key:
+            # The item now describes a different song. An old Spotify identity
+            # must not continue to match the previous track.
+            registered.spotify_id = None
         registered.artist = artist
         registered.title = title
-        registered.match_key = build_match_key(artist, title)
-        registered.url = url.strip()
+        registered.match_key = new_match_key
+        registered.url = validate_url(url)
         await self._async_save()
         self._signal_update()
 
@@ -381,6 +381,14 @@ class AutoChordsManager:
     def _signal_update(self) -> None:
         """Notify entities that in-memory state changed."""
         async_dispatcher_send(self.hass, SIGNAL_UPDATE, self.entry.entry_id)
+
+
+def validate_url(value: str) -> str:
+    """Validate and normalize a stored chord URL."""
+    value = value.strip()
+    if not value.startswith(("https://", "http://")):
+        raise ValueError("URL must start with http:// or https://")
+    return value
 
 
 def normalize(value: str) -> str:

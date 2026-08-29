@@ -42,8 +42,8 @@ def extract_spotify_track_id(content_id: object) -> str | None:
 def split_summary(summary: str) -> tuple[str, str]:
     """Split the visible 'Artist – Title' registry summary."""
     summary = summary.strip()
-    if " – " in summary:
-        artist, title = summary.split(" – ", 1)
+    if "–" in summary:
+        artist, title = summary.split("–", 1)
         return artist.strip(), title.strip()
     if " - " in summary:
         artist, title = summary.split(" - ", 1)

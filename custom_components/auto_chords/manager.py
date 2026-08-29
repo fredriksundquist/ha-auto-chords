@@ -33,6 +33,7 @@ from .const import (
 from .matching import (
     build_match_key,
     extract_spotify_track_id,
+    normalize,
     split_summary,
     validate_url,
 )
@@ -265,15 +266,27 @@ class AutoChordsManager:
     async def async_create_registry_song(
         self, summary: str, url: str
     ) -> RegisteredSong:
-        """Create a registry item manually from the to-do list."""
-        artist, title = split_summary(summary)
+        """Create or update a registry item manually from the to-do list."""
+        artist, title = _validated_registry_summary(summary)
+        url = validate_url(url)
+        match_key = build_match_key(artist, title)
+
+        for existing in self.songs.values():
+            if existing.match_key == match_key:
+                existing.artist = artist
+                existing.title = title
+                existing.url = url
+                await self._async_save()
+                self._signal_update()
+                return existing
+
         registered = RegisteredSong(
             uid=uuid4().hex,
             title=title,
             artist=artist,
             spotify_id=None,
-            match_key=build_match_key(artist, title),
-            url=validate_url(url),
+            match_key=match_key,
+            url=url,
         )
         self.songs[registered.uid] = registered
         await self._async_save()
@@ -285,8 +298,15 @@ class AutoChordsManager:
     ) -> None:
         """Update a registry item from the to-do list."""
         registered = self.songs[uid]
-        artist, title = split_summary(summary)
+        artist, title = _validated_registry_summary(summary)
+        url = validate_url(url)
         new_match_key = build_match_key(artist, title)
+
+        if any(
+            item.uid != uid and item.match_key == new_match_key
+            for item in self.songs.values()
+        ):
+            raise ValueError("A registered song with this artist and title already exists")
 
         if new_match_key != registered.match_key:
             # The visible item now describes a different song; an old Spotify
@@ -296,7 +316,7 @@ class AutoChordsManager:
         registered.artist = artist
         registered.title = title
         registered.match_key = new_match_key
-        registered.url = validate_url(url)
+        registered.url = url
         await self._async_save()
         self._signal_update()
 
@@ -321,6 +341,16 @@ class AutoChordsManager:
             if item.match_key == song.match_key:
                 return item
         return None
+
+    def _is_partial_update_for_last_notified(self, song: Song) -> bool:
+        """Return whether unmatched metadata can be a staged update of the last song."""
+        if self._last_notified_registry_uid is None:
+            return False
+        if song.spotify_id or song.artist:
+            return False
+
+        previous = self.songs.get(self._last_notified_registry_uid)
+        return previous is not None and normalize(song.title) == normalize(previous.title)
 
     @callback
     def _async_subscribe_media(self) -> None:
@@ -386,7 +416,7 @@ class AutoChordsManager:
 
         registered = self.find_registered(song)
         if registered is None:
-            if song_changed:
+            if song_changed and not self._is_partial_update_for_last_notified(song):
                 self._last_notified_registry_uid = None
             return
 
@@ -472,6 +502,14 @@ class AutoChordsManager:
     def _signal_update(self) -> None:
         """Notify integration entities that in-memory state changed."""
         async_dispatcher_send(self.hass, SIGNAL_UPDATE, self.entry.entry_id)
+
+
+def _validated_registry_summary(summary: str) -> tuple[str, str]:
+    """Split and validate a manually edited registry summary."""
+    artist, title = split_summary(summary)
+    if not title:
+        raise ValueError("A song title is required")
+    return artist, title
 
 
 def song_from_state(state: State) -> Song | None:

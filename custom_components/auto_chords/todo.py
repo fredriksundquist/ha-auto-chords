@@ -10,6 +10,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import AutoChordsConfigEntry
 from .entity import AutoChordsEntity
+from .matching import validate_url
 
 
 async def async_setup_entry(
@@ -54,9 +55,7 @@ class AutoChordsSongRegistry(AutoChordsEntity, TodoListEntity):
         """Create a song from the to-do UI."""
         if not item.summary:
             raise HomeAssistantError("A song name is required")
-        url = (item.description or "").strip()
-        if not url.startswith(("https://", "http://")):
-            raise HomeAssistantError("A chord URL starting with http:// or https:// is required")
+        url = _validate_chord_url(item.description or "")
         await self.manager.async_create_registry_song(item.summary, url)
 
     async def async_update_todo_item(self, item: TodoItem) -> None:
@@ -65,14 +64,20 @@ class AutoChordsSongRegistry(AutoChordsEntity, TodoListEntity):
             raise HomeAssistantError("Registered song was not found")
         if not item.summary:
             raise HomeAssistantError("A song name is required")
-        url = (item.description or "").strip()
-        if not url.startswith(("https://", "http://")):
-            raise HomeAssistantError("A chord URL starting with http:// or https:// is required")
+        url = _validate_chord_url(item.description or "")
         await self.manager.async_update_registry_song(item.uid, item.summary, url)
 
     async def async_delete_todo_items(self, uids: list[str]) -> None:
         """Delete registered songs."""
         await self.manager.async_delete_registry_songs(uids)
+
+
+def _validate_chord_url(value: str) -> str:
+    """Expose URL validation failures as Home Assistant service errors."""
+    try:
+        return validate_url(value)
+    except ValueError as err:
+        raise HomeAssistantError(str(err)) from err
 
 
 def _summary(artist: str, title: str) -> str:

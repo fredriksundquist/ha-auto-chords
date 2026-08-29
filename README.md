@@ -1,8 +1,8 @@
-# Auto Chords  DANGER! NOT FINISH! FIRST TEST!
+# Auto Chords
 
 Auto Chords is a Home Assistant custom integration that links songs playing on selected `media_player` entities to chord/tab URLs and can send the registered link as a clickable Home Assistant Companion notification.
 
-> **Development status:** `0.1.0-alpha.1` is prepared for the first Home Assistant test, but has not yet been installed on the target Home Assistant instance. The current `main` build has passed Python 3.14.2 compilation, Ruff, pytest against Home Assistant 2026.8.3, Home Assistant hassfest and HACS validation. Keep the warning above until the first real Home Assistant test has succeeded.
+> **Development status:** `0.1.0-alpha.2` has passed its first real Home Assistant 2026.8.3 runtime test. Config entry setup, Sonos metadata tracking, registration, persistence and Companion notification delivery have all been verified on the target Home Assistant instance.
 
 ## V0.1 behavior
 
@@ -31,6 +31,8 @@ Minimum supported Home Assistant version for this alpha is **2026.8.3**.
 4. Restart Home Assistant.
 5. Add **Auto Chords** under **Settings → Devices & services**.
 
+Existing installations can be updated through HACS. Removing the config entry is not required for normal updates; registered songs and settings remain in the existing Auto Chords store.
+
 ## Configuration
 
 The config flow requires:
@@ -55,6 +57,29 @@ All entities belong to one Home Assistant device named **Auto Chords**:
 - **Registered songs** — editable to-do-list view of the persistent song registry.
 
 The **Registered songs** list is used as an editable registry, not as a task tracker. Home Assistant still renders a normal to-do checkbox, but completion state is intentionally not stored in V0.1; registered songs remain active until edited or deleted.
+
+## Clickable chord link in a dashboard
+
+The **Current song** sensor exposes the registered chord URL as its `chord_url` attribute. A standard Markdown card can therefore show a clickable link for the currently playing registered song.
+
+Replace `sensor.auto_chords_current_song` with the actual entity ID if Home Assistant generated a different one:
+
+```yaml
+type: markdown
+content: >
+  {% set url = state_attr('sensor.auto_chords_current_song', 'chord_url') %}
+  {% set title = states('sensor.auto_chords_current_song') %}
+  {% if url %}
+  ## 🎸 {{ title }}
+  [Open chords]({{ url }})
+  {% else %}
+  **{{ title }}**
+
+  No chord link registered for this song.
+  {% endif %}
+```
+
+This does not require an additional Auto Chords entity. The dashboard reads the existing `chord_url` sensor attribute and updates automatically when the current song changes.
 
 ## Stored data
 
@@ -91,13 +116,12 @@ The current build has passed:
 - Ruff static checks;
 - pytest with Home Assistant 2026.8.3;
 - Home Assistant hassfest;
-- HACS integration repository validation.
+- HACS integration repository validation;
+- first real target-instance runtime testing on Home Assistant 2026.8.3.
 
 The test suite covers matching helpers, URL validation, concurrent notification deduplication, mixed Spotify/fallback identity, staged full/incomplete/full Sonos metadata, queued-task lifecycle after stop, iOS/Android notification link data, manual registry duplicate/title validation and config-entry unload ordering.
 
 CI also uses `pytest-homeassistant-custom-component` pinned to the release generated for Home Assistant 2026.8.3. A Home Assistant fixture smoke-test sets up a real config entry, forwards all five platforms, verifies the Auto Chords device/entity registry entries, and exercises the config flow's empty-selection validation.
-
-Passing these checks does not replace testing the integration in the actual target Home Assistant instance. The first target-instance installation is still the next release gate.
 
 ## Uninstall
 

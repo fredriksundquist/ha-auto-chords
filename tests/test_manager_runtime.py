@@ -6,6 +6,8 @@ import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+import pytest
+
 from custom_components.auto_chords import async_unload_entry
 from custom_components.auto_chords.manager import AutoChordsManager, RegisteredSong, Song
 
@@ -99,6 +101,138 @@ def test_registry_uid_dedupes_spotify_and_fallback_identity() -> None:
         await manager.async_process_song(spotify_song)
         await manager.async_process_song(fallback_song)
         assert calls == 1
+
+    asyncio.run(scenario())
+
+
+def test_partial_group_metadata_does_not_rearm_same_notification() -> None:
+    """Full -> incomplete -> full metadata for one song must notify once."""
+
+    async def scenario() -> None:
+        manager, _ = _manager_with_song()
+        complete = Song(
+            title="Lofotbrev",
+            artist="Ola Bremnes",
+            source_player="media_player.stue",
+            spotify_id="23wea78hoXqfnOE9JciIXy",
+            match_key="ola bremnes|lofotbrev",
+        )
+        incomplete = Song(
+            title="Lofotbrev",
+            artist="",
+            source_player="media_player.gjesterom_sonos",
+            spotify_id=None,
+            match_key="|lofotbrev",
+        )
+        calls = 0
+
+        async def fake_send(*_args) -> bool:
+            nonlocal calls
+            calls += 1
+            return True
+
+        manager._async_send_notifications = fake_send
+        await manager.async_process_song(complete)
+        await manager.async_process_song(incomplete)
+        await manager.async_process_song(complete)
+        assert calls == 1
+
+    asyncio.run(scenario())
+
+
+def test_genuine_unregistered_song_rearms_previous_notification() -> None:
+    """A different unregistered song should permit a later return notification."""
+
+    async def scenario() -> None:
+        manager, _ = _manager_with_song()
+        registered_song = Song(
+            title="Lofotbrev",
+            artist="Ola Bremnes",
+            source_player="media_player.stue",
+            spotify_id="23wea78hoXqfnOE9JciIXy",
+            match_key="ola bremnes|lofotbrev",
+        )
+        other_song = Song(
+            title="En annen sang",
+            artist="En annen artist",
+            source_player="media_player.stue",
+            spotify_id=None,
+            match_key="en annen artist|en annen sang",
+        )
+        calls = 0
+
+        async def fake_send(*_args) -> bool:
+            nonlocal calls
+            calls += 1
+            return True
+
+        manager._async_send_notifications = fake_send
+        await manager.async_process_song(registered_song)
+        await manager.async_process_song(other_song)
+        await manager.async_process_song(registered_song)
+        assert calls == 2
+
+    asyncio.run(scenario())
+
+
+def test_manual_create_updates_existing_match_instead_of_duplicate() -> None:
+    """Manual to-do creation must not create two effective matches."""
+
+    async def scenario() -> None:
+        manager, registered = _manager_with_song()
+        manager._async_save = AsyncMock()
+
+        result = await manager.async_create_registry_song(
+            "Ola Bremnes – Lofotbrev",
+            "https://tabs.example/new-lofotbrev",
+        )
+
+        assert result.uid == registered.uid
+        assert len(manager.songs) == 1
+        assert registered.spotify_id == "23wea78hoXqfnOE9JciIXy"
+        assert registered.url == "https://tabs.example/new-lofotbrev"
+
+    asyncio.run(scenario())
+
+
+def test_manual_registry_rejects_empty_title() -> None:
+    """A manual summary must contain an actual song title."""
+
+    async def scenario() -> None:
+        manager, _ = _manager_with_song()
+        manager._async_save = AsyncMock()
+
+        with pytest.raises(ValueError, match="song title"):
+            await manager.async_create_registry_song(
+                "Ola Bremnes – ",
+                "https://tabs.example/invalid",
+            )
+
+    asyncio.run(scenario())
+
+
+def test_manual_update_rejects_duplicate_match_key() -> None:
+    """Editing one registry item onto another match must be rejected."""
+
+    async def scenario() -> None:
+        manager, _ = _manager_with_song()
+        second = RegisteredSong(
+            uid="registry-2",
+            title="Annen sang",
+            artist="Annen artist",
+            spotify_id=None,
+            match_key="annen artist|annen sang",
+            url="https://tabs.example/other",
+        )
+        manager.songs[second.uid] = second
+        manager._async_save = AsyncMock()
+
+        with pytest.raises(ValueError, match="already exists"):
+            await manager.async_update_registry_song(
+                second.uid,
+                "Ola Bremnes – Lofotbrev",
+                "https://tabs.example/duplicate",
+            )
 
     asyncio.run(scenario())
 

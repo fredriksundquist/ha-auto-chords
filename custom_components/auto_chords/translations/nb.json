@@ -4,6 +4,10 @@
     "abort": {
       "single_instance_allowed": "Bare én Auto Chords-instans kan konfigureres."
     },
+    "error": {
+      "media_player_required": "Velg minst én mediespiller.",
+      "notification_target_required": "Velg minst ett varslingsmål."
+    },
     "step": {
       "user": {
         "title": "Velg kilder og varslingsmål",
@@ -20,6 +24,10 @@
     }
   },
   "options": {
+    "error": {
+      "media_player_required": "Velg minst én mediespiller.",
+      "notification_target_required": "Velg minst ett varslingsmål."
+    },
     "step": {
       "init": {
         "title": "Kilder og varslingsmål",

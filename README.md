@@ -2,7 +2,7 @@
 
 Auto Chords is a Home Assistant custom integration that links songs playing on selected `media_player` entities to chord/tab URLs and can send the registered link as a clickable Home Assistant Companion notification.
 
-> **Development status:** `0.1.0-alpha.1` is prepared for the first Home Assistant test, but has not yet been installed on the target Home Assistant instance. The current review build on `dev` has passed Python 3.14.2 compilation, Ruff, pytest against Home Assistant 2026.8.3, Home Assistant hassfest and HACS validation. Keep the warning above until the first real Home Assistant test has succeeded.
+> **Development status:** `0.1.0-alpha.1` is prepared for the first Home Assistant test, but has not yet been installed on the target Home Assistant instance. The current `main` build has passed Python 3.14.2 compilation, Ruff, pytest against Home Assistant 2026.8.3, Home Assistant hassfest and HACS validation. Keep the warning above until the first real Home Assistant test has succeeded.
 
 ## V0.1 behavior
 
@@ -14,15 +14,16 @@ Auto Chords is a Home Assistant custom integration that links songs playing on s
 - Shows the latest detected song in a sensor with artist, source player, Spotify track ID, registration status and registered URL as attributes.
 - Register the current song by pasting an HTTP/HTTPS chord URL into the **Chord URL** text entity and pressing **Register current song**.
 - Registered songs are exposed through a standard Home Assistant to-do list so entries can be viewed, edited and deleted in the existing frontend.
-- Suppresses duplicate notifications when grouped players resolve to the same registered song.
+- Suppresses duplicate notifications when grouped players resolve to the same registered song, including a full → temporarily incomplete → full metadata sequence for the same title.
 - Re-evaluates matching when media metadata becomes more complete, so staged Sonos metadata updates do not prevent a valid match.
 - Sends the registered link using the Companion notification URL fields for both iOS and Android.
+- Manual to-do creation reuses an existing artist/title match instead of creating a second effective duplicate.
 
-## Installation later via HACS custom repository
+## Installation via HACS custom repository
 
-This repository is structured as a HACS integration repository and is public so HACS can access it. The current review build has passed HACS repository validation.
+This repository is structured as a HACS integration repository and is public so HACS can access it. The current build has passed HACS repository validation.
 
-After the reviewed build has been merged to `main`:
+Minimum supported Home Assistant version for this alpha is **2026.8.3**.
 
 1. In HACS, open the menu and choose **Custom repositories**.
 2. Add `https://github.com/fredriksundquist/ha-auto-chords` as type **Integration**.
@@ -32,7 +33,7 @@ After the reviewed build has been merged to `main`:
 
 ## Configuration
 
-The config flow asks for:
+The config flow requires:
 
 - one or more `media_player` entities;
 - one or more currently registered `notify.mobile_app_*` actions.
@@ -52,6 +53,8 @@ All entities belong to one Home Assistant device named **Auto Chords**:
 - **Chord URL** — transient URL input used by the registration button.
 - **Register current song** — stores/updates the currently detected song.
 - **Registered songs** — editable to-do-list view of the persistent song registry.
+
+The **Registered songs** list is used as an editable registry, not as a task tracker. Home Assistant still renders a normal to-do checkbox, but completion state is intentionally not stored in V0.1; registered songs remain active until edited or deleted.
 
 ## Stored data
 
@@ -82,17 +85,19 @@ Auto Chords does **not**:
 
 ## Validation
 
-The current review build has passed:
+The current build has passed:
 
 - Python 3.14.2 source compilation;
 - Ruff static checks;
-- pytest while importing Home Assistant 2026.8.3;
+- pytest with Home Assistant 2026.8.3;
 - Home Assistant hassfest;
 - HACS integration repository validation.
 
-The focused tests cover matching helpers, URL validation, concurrent notification deduplication, mixed Spotify/fallback identity, queued-task lifecycle after stop, iOS/Android notification link data, and config-entry unload ordering.
+The test suite covers matching helpers, URL validation, concurrent notification deduplication, mixed Spotify/fallback identity, staged full/incomplete/full Sonos metadata, queued-task lifecycle after stop, iOS/Android notification link data, manual registry duplicate/title validation and config-entry unload ordering.
 
-Passing these checks does not replace testing the integration in a real Home Assistant instance. The first target-instance installation is still the next release gate.
+CI also uses `pytest-homeassistant-custom-component` pinned to the release generated for Home Assistant 2026.8.3. A Home Assistant fixture smoke-test sets up a real config entry, forwards all five platforms, verifies the Auto Chords device/entity registry entries, and exercises the config flow's empty-selection validation.
+
+Passing these checks does not replace testing the integration in the actual target Home Assistant instance. The first target-instance installation is still the next release gate.
 
 ## Uninstall
 
@@ -118,9 +123,9 @@ x-sonos-spotify:spotify%3atrack%3a23wea78hoXqfnOE9JciIXy?sid=9&flags=8232&sn=2
 
 is decoded and the Spotify track ID `23wea78hoXqfnOE9JciIXy` is used as the preferred identity. If no Spotify track ID is present, Auto Chords compares a normalized `artist|title` key.
 
-Notification deduplication is based on the matched registry item's UID. This avoids duplicate notifications when one selected player exposes a Spotify ID while another reaches the same registered song through artist/title fallback.
+Notification deduplication is based on the matched registry item's UID. If a grouped Sonos temporarily reports the same title without artist or Spotify ID after that registry item has already notified, Auto Chords treats that as potentially staged metadata and does not immediately re-arm the same notification. A genuinely different unmatched song still re-arms notifications for a later return to the registered song.
 
-If the artist/title of a registry entry is changed manually, an old Spotify track ID is discarded so it cannot accidentally keep matching the previous track.
+If the artist/title of a registry entry is changed manually, an old Spotify track ID is discarded so it cannot accidentally keep matching the previous track. Editing one registry entry so it would duplicate another artist/title match is rejected.
 
 ## Branches
 

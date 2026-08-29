@@ -4,6 +4,10 @@
     "abort": {
       "single_instance_allowed": "Only one Auto Chords instance can be configured."
     },
+    "error": {
+      "media_player_required": "Select at least one media player.",
+      "notification_target_required": "Select at least one notification target."
+    },
     "step": {
       "user": {
         "title": "Choose sources and notification targets",
@@ -20,6 +24,10 @@
     }
   },
   "options": {
+    "error": {
+      "media_player_required": "Select at least one media player.",
+      "notification_target_required": "Select at least one notification target."
+    },
     "step": {
       "init": {
         "title": "Sources and notification targets",

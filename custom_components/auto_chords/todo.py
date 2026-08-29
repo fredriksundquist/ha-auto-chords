@@ -56,7 +56,10 @@ class AutoChordsSongRegistry(AutoChordsEntity, TodoListEntity):
         if not item.summary:
             raise HomeAssistantError("A song name is required")
         url = _validate_chord_url(item.description or "")
-        await self.manager.async_create_registry_song(item.summary, url)
+        try:
+            await self.manager.async_create_registry_song(item.summary, url)
+        except ValueError as err:
+            raise HomeAssistantError(str(err)) from err
 
     async def async_update_todo_item(self, item: TodoItem) -> None:
         """Update a registered song."""
@@ -65,7 +68,10 @@ class AutoChordsSongRegistry(AutoChordsEntity, TodoListEntity):
         if not item.summary:
             raise HomeAssistantError("A song name is required")
         url = _validate_chord_url(item.description or "")
-        await self.manager.async_update_registry_song(item.uid, item.summary, url)
+        try:
+            await self.manager.async_update_registry_song(item.uid, item.summary, url)
+        except ValueError as err:
+            raise HomeAssistantError(str(err)) from err
 
     async def async_delete_todo_items(self, uids: list[str]) -> None:
         """Delete registered songs."""

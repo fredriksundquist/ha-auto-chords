@@ -56,6 +56,16 @@ def _schema(hass: HomeAssistant, defaults: dict[str, Any] | None = None) -> vol.
     )
 
 
+def _selection_errors(user_input: dict[str, Any]) -> dict[str, str]:
+    """Return field errors for selections required by the first release."""
+    errors: dict[str, str] = {}
+    if not user_input.get(CONF_MEDIA_PLAYERS):
+        errors[CONF_MEDIA_PLAYERS] = "media_player_required"
+    if not user_input.get(CONF_NOTIFY_SERVICES):
+        errors[CONF_NOTIFY_SERVICES] = "notification_target_required"
+    return errors
+
+
 class AutoChordsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Auto Chords."""
 
@@ -69,7 +79,14 @@ class AutoChordsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="single_instance_allowed")
 
         if user_input is not None:
-            return self.async_create_entry(title="Auto Chords", data=user_input)
+            errors = _selection_errors(user_input)
+            if not errors:
+                return self.async_create_entry(title="Auto Chords", data=user_input)
+            return self.async_show_form(
+                step_id="user",
+                data_schema=_schema(self.hass, user_input),
+                errors=errors,
+            )
 
         return self.async_show_form(step_id="user", data_schema=_schema(self.hass))
 
@@ -90,7 +107,14 @@ class AutoChordsOptionsFlow(config_entries.OptionsFlow):
     ) -> ConfigFlowResult:
         """Manage integration options."""
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+            errors = _selection_errors(user_input)
+            if not errors:
+                return self.async_create_entry(title="", data=user_input)
+            return self.async_show_form(
+                step_id="init",
+                data_schema=_schema(self.hass, user_input),
+                errors=errors,
+            )
 
         current = {**self.config_entry.data, **self.config_entry.options}
         return self.async_show_form(
